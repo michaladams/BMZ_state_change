@@ -1,0 +1,1427 @@
+#!/usr/bin/env python
+import tkinter.filedialog
+import time
+import datetime
+import os
+import sys
+import inspect
+from can.bus import BusState
+from os import listdir
+from os.path import isfile, join
+import qrcode
+import qrcode.image.svg
+import codecs               # to load polish letter eg from .txt files
+import shutil               # to open exel
+from openpyxl import Workbook
+from openpyxl import load_workbook
+from pandas import *
+from pandas import read_excel
+import binascii
+import win32com.client      # to open exel
+import win32                # for printing too printer
+import win32print           # for printing too printer
+import win32ui
+from numpy import *         # for creating array from xmls
+from PIL import Image, ImageWin
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtSql import QSqlDatabase, QSqlQuery, QSqlQueryModel, QSqlTableModel
+from PyQt5.QtCore import pyqtSlot, QSize, QObject, Qt, pyqtSlot
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QApplication, QDialog, QWidget, QPushButton, QMessageBox, \
+    QMainWindow, QGraphicsScene, QRadioButton, QGridLayout, QScrollArea, QHBoxLayout, QVBoxLayout, QLineEdit, \
+    QStackedWidget, QGroupBox, QCheckBox, QGraphicsScene, QGraphicsScene, QLabel, QTextBrowser,\
+    QTableView, QGraphicsView, QAction, QTableWidget, QTableWidgetItem, QDateEdit, QComboBox, QTabWidget
+from PyQt5.uic import loadUi
+from PyQt5 import uic
+from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.QtCore import pyqtSignal, QThread, QAbstractProxyModel
+from PyQt5.QtWidgets import QFileDialog
+import numpy as np
+
+
+# ###########################################       printer          ###########################################
+#
+# Constants for GetDeviceCaps
+#
+#
+# HORZRES / VERTRES = printable area
+#
+HORZRES = 8
+VERTRES = 10
+#
+# LOGPIXELS = dots per inch
+#
+LOGPIXELSX = 88
+LOGPIXELSY = 90
+#
+# PHYSICALWIDTH/HEIGHT = total area
+#
+PHYSICALWIDTH = 110
+PHYSICALHEIGHT = 111
+#
+# PHYSICALOFFSETX/Y = left / top margin
+#
+PHYSICALOFFSETX = 112
+PHYSICALOFFSETY = 113
+
+printer_name = win32print.GetDefaultPrinter ()
+file_name = '_files\qrcode_test.png'
+
+# ###########################################       load ui files          ############################################
+uifile_1 = 'QR_code_main_window.ui'
+form_1, base_1 = uic.loadUiType(uifile_1)
+# ##########################################       global variable         ############################################
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+files_path = os.path.join(dir_path, "_files/").replace("\\", "/")
+
+engineering_drive = "E:/"                                                   # file name is added after read VIN number
+value_of_change = ""
+base_file_path_global = ""                                                  # this value save path to
+printer_name = win32print.GetDefaultPrinter()
+global_list_of_savad_mark = []
+
+# ##########################################       MAIN CLASS              ############################################
+
+
+class QRcodeMainWIndow(base_1, form_1):
+
+    def __init__(self):
+        try:
+
+            super(base_1, self).__init__()
+            self.setupUi(self)
+
+            # QRcodeMainWIndow.showFullScreen(self)
+            QRcodeMainWIndow.showMaximized(self)
+
+            # QRcodeMainWIndow.setFixedSize(self, 1280, 1024)
+
+
+            # ##########################################       network control        ###############################
+            net_con = self.network_control()                        # 0 if no network and 1 if network connection ok
+            # print(net_con)
+            print(printer_name)
+
+            if net_con == 1:
+                self.network_ok_or_offline_accepted()
+                self.hideded_elements()
+                self.tab_creata_tool.setCurrentIndex(0)             # set tab to creata new tool as default
+                self.open_and_show_exale()
+            if net_con == 0:
+                decision_to_continue = self.network_Qmessage()      # get user decision from network Qmessage
+                # print(decision_to_continue)
+                if decision_to_continue == "yes":
+                    print("yes")
+                    self.network_ok_or_offline_accepted()
+                    self.hideded_elements()
+                    self.tab_creata_tool.setCurrentIndex(0)  # set tab to creata new tool as default
+                if decision_to_continue == "no":
+                    self.tab_creata_tool.setCurrentIndex(0)  # set tab to creata new tool as default
+                    self.hideded_elements()
+            # ##########################################       TAB SEARCH section   ###############################
+            self.lineEdit_name_in_search.setEnabled(False)
+            self.lineEdit_name_in_search.setTextMargins(20, 0, 0, 0)
+            self.lineEdit_name_in_search_filtrering.setEnabled(False)
+            self.lineEdit_name_in_search_filtrering.setTextMargins(20, 0, 0, 0)
+            self.checkBox_in_search_tool_for_name_search.setEnabled(False)
+
+            self.lineEdit_tool_code_in_search.setEnabled(False)
+            self.lineEdit_tool_code_in_search.setTextMargins(20, 0, 0, 0)
+            self.lineEdit_tool_code_in_search_filtrering.setEnabled(False)
+            self.lineEdit_tool_code_in_search_filtrering.setTextMargins(20, 0, 0, 0)
+            self.checkBox_in_search_tool_for_tool_code.setEnabled(False)
+
+            self.lineEdit_destination_in_search_filtrering.setEnabled(False)
+            self.lineEdit_destination_in_search_filtrering.setTextMargins(20, 0, 0, 0)
+            self.lineEdit_destination_in_search.setEnabled(False)
+            self.lineEdit_destination_in_search.setTextMargins(20, 0, 0, 0)
+            self.checkBox_in_search_tool_for_destination.setEnabled(False)
+
+            self.lineEdit_mark_in_search.setEnabled(False)
+            self.lineEdit_mark_in_search.setTextMargins(20, 0, 0, 0)
+            self.lineEdit_mark_in_search_filtrering.setEnabled(False)
+            self.lineEdit_mark_in_search_filtrering.setTextMargins(20, 0, 0, 0)
+            self.checkBox_in_search_tool_for_mark.setEnabled(False)
+
+            self.lineEdit_power_in_search.setEnabled(False)
+            self.lineEdit_producer_in_search.setEnabled(False)
+            self.lineEdit_next_calibration_date_in_search.setEnabled(False)
+            self.lineEdit_others_in_search.setEnabled(False)
+
+            self.next_calibration_date.setEnabled(False)
+            self.tab_edit_tool.setEnabled(False)
+
+            # ##########################################       bottom buttons         ###############################
+            self.push_button_aproved.clicked.connect(self.approve_clicked)
+            self.push_button_QR_generate.clicked.connect(self.generate_clicked)
+
+            # ##########################################       choose file buttons         ###########################
+            self.push_button_choose_path.clicked.connect(self.choose_file)
+            # ##########################################       save file to configuration file buttons         #######
+            self.pushButton_save_path_in_file.clicked.connect(self.save_path)
+            # ##########################################       Help buttons         ###############################
+
+            # self.push_button_help_info_destination_show.clicked.connect(self.help_destination)
+
+            self.actionO_programie.triggered.connect(self.o_programie_chossen)
+            self.push_button_help_info_destination_show.clicked.connect(self.read_destination_help_file)
+            self.push_button_edit_help_destination_content.clicked.connect(self.edit_destination_help_file)
+            self.push_button_help_info_mark_show.clicked.connect(self.read_mark_help_file)
+            self.push_button_edit_help_mark_content.clicked.connect(self.edit_mark_help_file)
+            self.push_button_edit_help_mark_content_pixmap.clicked.connect(self.edit_mark_help_picture)
+            self.pushButton_print_QR_code_only.clicked.connect(self.print_QR_code_only)
+            self.pushButton_open_exale_in_tabwidget.clicked.connect(self.open_and_show_exale)
+
+            self.tab_creata_tool.currentChanged.connect(self.tab_index_chosen)
+            # ##########################################       Table clicked buttons         ##########################
+            self.tableWidget_qt.cellClicked.connect(self.row_was_clicked)
+            self.tableView_data_from_basefile.clicked.connect(self.row_was_clicked_in_tableview)
+            self.checkBox_calibration_neccessery.clicked.connect(self.date_calibration_is_need)
+            # ##########################################       Filtr checkBoxes         ###############################
+            self.checkBox_in_search_tool_for_name_search.clicked.connect(self.search_by_name_filter)
+            self.checkBox_in_search_tool_for_tool_code.clicked.connect(self.search_by_tool_code_filter)
+            self.checkBox_in_search_tool_for_destination.clicked.connect(self.search_by_destination_filter)
+            self.checkBox_in_search_tool_for_mark.clicked.connect(self.search_by_mark_filter)
+            # ##########################################       calibration checkBoxes         #########################
+            self.checkBox_calibration_neccessery.clicked.connect(self.date_calibration_is_need)
+            # ##########################################       Filtr ComboBoxes         ###############################
+            self.comboBox_tool_name__in_seach.activated.connect(self.sorted_from_combobox_tool_name)
+            self.comboBox_tool_code__in_seach.activated.connect(self.sorted_from_combobox_tool_code)
+            self.comboBox_destination__in_seach.activated.connect(self.sorted_from_combobox_destination)
+            self.comboBox_mark_in_seach.activated.connect(self.sorted_from_combobox_mark)
+
+            self.lineEdit_mark.textChanged.connect(self.control_mark_in_base)
+
+        # CATCH
+        except Exception as e:
+            print("---------------in __init__(self): " + str(e))
+
+    def control_mark_in_base(self):
+        try:
+            print("start of control_mark_in_base\n------------------------------------------------ ")
+            self.tableView_data_from_basefile_in_new_tools.show()
+
+
+
+        except Exception as e:
+            print("---------------in control_mark_in_base: " + str(e))
+
+    def sorted_from_combobox_mark(self):
+        try:
+            print("start of sorted_from_combobox_mark\n------------------------------------------------ ")
+            choosen_value = self.comboBox_mark_in_seach.currentText()
+            print(choosen_value)
+            self.checkBox_in_search_tool_for_mark.setChecked(True)
+            self.lineEdit_mark_in_search_filtrering.setText(choosen_value)
+            self.lineEdit_mark_in_search_filtrering.setEnabled(True)
+            self.lineEdit_mark_in_search_filtrering.show()
+
+        except Exception as e:
+            print("---------------in sorted_from_combobox_mark: " + str(e))
+
+    def sorted_from_combobox_destination(self):
+        try:
+            print("start of sorted_from_combobox_destination\n------------------------------------------------ ")
+            choosen_value = self.comboBox_destination__in_seach.currentText()
+            print(choosen_value)
+            self.checkBox_in_search_tool_for_destination.setChecked(True)
+            self.lineEdit_destination_in_search_filtrering.setText(choosen_value)
+            self.lineEdit_destination_in_search_filtrering.setEnabled(True)
+            self.lineEdit_destination_in_search_filtrering.show()
+
+        except Exception as e:
+            print("---------------in sorted_from_combobox_destination: " + str(e))
+
+    def sorted_from_combobox_tool_code(self):
+        try:
+            # print("start of sorted_from_combobox_tool_name\n------------------------------------------------ ")
+            choosen_value = self.comboBox_tool_code__in_seach.currentText()
+            print(choosen_value)
+            self.checkBox_in_search_tool_for_tool_code.setChecked(True)
+            self.lineEdit_tool_code_in_search_filtrering.setText(choosen_value)
+            self.lineEdit_tool_code_in_search_filtrering.setEnabled(True)
+            self.lineEdit_tool_code_in_search_filtrering.show()
+
+        except Exception as e:
+            print("---------------in sorted_from_combobox_tool_name: " + str(e))
+
+    def sorted_from_combobox_tool_name(self):
+        try:
+            # print("start of sorted_from_combobox_tool_name\n------------------------------------------------ ")
+            choosen_value = self.comboBox_tool_name__in_seach.currentText()
+            print(choosen_value)
+            self.checkBox_in_search_tool_for_name_search.setChecked(True)
+            self.lineEdit_name_in_search_filtrering.setText(choosen_value)
+            self.lineEdit_name_in_search_filtrering.setEnabled(True)
+            self.lineEdit_name_in_search_filtrering.show()
+
+
+        except Exception as e:
+            print("---------------in sorted_from_combobox_tool_name: " + str(e))
+
+    def search_by_mark_filter(self):
+        try:
+            # print("start of search_by_mark_filter\n------------------------------------------------ ")
+            mark_filter_state = self.checkBox_in_search_tool_for_mark.checkState()
+            if mark_filter_state == 2:
+                self.comboBox_mark_in_seach.setEnabled(True)
+                self.lineEdit_mark_in_search_filtrering.clear()
+                self.lineEdit_mark_in_search_filtrering.setEnabled(True)
+                self.lineEdit_mark_in_search_filtrering.show()
+                model = self.tableView_data_from_basefile.model()
+                # ##### Enable filtering by tool code edit
+                filter_proxy_model_for_mark = QtCore.QSortFilterProxyModel()  # create model for sorting table
+                filter_proxy_model_for_mark.setSourceModel(model)  # choose data for model from origin model
+                filter_proxy_model_for_mark.setFilterKeyColumn(1)  # set filtering by third column
+                self.lineEdit_mark_in_search_filtrering.textChanged.connect(
+                    filter_proxy_model_for_mark.setFilterRegExp)
+                self.tableView_data_from_basefile.setModel(filter_proxy_model_for_mark)
+                self.comboBox_mark_in_seach.setModel(filter_proxy_model_for_mark)  # set model to ComboBox
+                self.comboBox_mark_in_seach.setModelColumn(1)  # choose column in model to display
+            if mark_filter_state == 0:
+                self.comboBox_mark_in_seach.setEnabled(False)
+                self.lineEdit_mark_in_search_filtrering.setEnabled(False)
+                self.lineEdit_mark_in_search_filtrering.clear()
+                self.lineEdit_mark_in_search_filtrering.hide()
+
+        except Exception as e:
+            print("---------------in search_by_mark_filter: " + str(e))
+
+    def search_by_destination_filter(self):
+        try:
+            # print("start of search_by_destination_filter\n------------------------------------------------ ")
+            destination_filter_state = self.checkBox_in_search_tool_for_destination.checkState()
+            if destination_filter_state == 2:
+                self.comboBox_destination__in_seach.setEnabled(True)
+                self.lineEdit_destination_in_search_filtrering.clear()
+                self.lineEdit_destination_in_search_filtrering.setEnabled(True)
+                self.lineEdit_destination_in_search_filtrering.show()
+                model = self.tableView_data_from_basefile.model()
+                # ##### Enable filtering by tool code edit
+                filter_proxy_model_for_destination = QtCore.QSortFilterProxyModel()  # create model for sorting table
+                filter_proxy_model_for_destination.setSourceModel(model)  # choose data for model from origin model
+                filter_proxy_model_for_destination.setFilterKeyColumn(0)  # set filtering by third column
+                self.lineEdit_destination_in_search_filtrering.textChanged.connect(
+                    filter_proxy_model_for_destination.setFilterRegExp)
+                self.tableView_data_from_basefile.setModel(filter_proxy_model_for_destination)
+                self.comboBox_destination__in_seach.setModel(filter_proxy_model_for_destination)  # set model to ComboBox
+                self.comboBox_destination__in_seach.setModelColumn(0)  # choose column in model to display
+
+            if destination_filter_state == 0:
+                self.comboBox_destination__in_seach.setEnabled(False)
+                self.lineEdit_destination_in_search_filtrering.setEnabled(False)
+                self.lineEdit_destination_in_search_filtrering.clear()
+                self.lineEdit_destination_in_search_filtrering.hide()
+
+        except Exception as e:
+            print("---------------in search_by_destination_filter: " + str(e))
+
+    def search_by_tool_code_filter(self):
+        try:
+            print("start of search_by_tool_code_filter\n------------------------------------------------ ")
+            tool_code_filter_state = self.checkBox_in_search_tool_for_tool_code.checkState()
+            if tool_code_filter_state == 2:
+                self.comboBox_tool_code__in_seach.setEnabled(True)
+                self.lineEdit_tool_code_in_search_filtrering.clear()
+                self.lineEdit_tool_code_in_search_filtrering.setEnabled(True)
+                self.lineEdit_tool_code_in_search_filtrering.show()
+                model = self.tableView_data_from_basefile.model()
+                # ##### Enable filtering by tool code edit
+                filter_proxy_model_for__tool_code = QtCore.QSortFilterProxyModel()  # create model for sorting table
+                filter_proxy_model_for__tool_code.setSourceModel(model)  # choose data for model from origin model
+                filter_proxy_model_for__tool_code.setFilterKeyColumn(5)  # set filtering by third column
+                # ### if texta change in lineEdit_tool_code_in_search_filtrering sorting model will update as well
+                self.lineEdit_tool_code_in_search_filtrering.textChanged.connect(
+                    filter_proxy_model_for__tool_code.setFilterRegExp)
+                self.tableView_data_from_basefile.setModel(filter_proxy_model_for__tool_code)
+                self.comboBox_tool_code__in_seach.setModel(filter_proxy_model_for__tool_code)  # set model to ComboBox
+                self.comboBox_tool_code__in_seach.setModelColumn(5)  # choose column in model to display
+            if tool_code_filter_state == 0:
+                self.comboBox_tool_code__in_seach.setEnabled(False)
+                self.lineEdit_tool_code_in_search_filtrering.setEnabled(False)
+                self.lineEdit_tool_code_in_search_filtrering.clear()
+                self.lineEdit_tool_code_in_search_filtrering.hide()
+
+        except Exception as e:
+            print("---------------in search_by_tool_code_filter: " + str(e))
+
+    def search_by_name_filter(self):
+        try:
+            print("start of search_by_name_filter\n------------------------------------------------ ")
+            name_filter_state = self.checkBox_in_search_tool_for_name_search.checkState()
+
+            if name_filter_state == 2:
+                self.comboBox_tool_name__in_seach.setEnabled(True)
+                self.lineEdit_name_in_search_filtrering.clear()
+                self.lineEdit_name_in_search_filtrering.setEnabled(True)
+                self.lineEdit_name_in_search_filtrering.show()
+                model = self.tableView_data_from_basefile.model()
+                # ##### Enable filtering by tool code edit
+                filter_proxy_model_for_name = QtCore.QSortFilterProxyModel()  # create model for sorting table
+                filter_proxy_model_for_name.setSourceModel(model)  # choose data for model from origin model
+                filter_proxy_model_for_name.setFilterKeyColumn(2)  # set filtering by third column
+                # ### if texta change in lineEdit_name_in_search_filtering sorting model will update as well
+                self.lineEdit_name_in_search_filtrering.textChanged.connect(
+                    filter_proxy_model_for_name.setFilterRegExp)
+                self.tableView_data_from_basefile.setModel(filter_proxy_model_for_name)
+                self.comboBox_tool_name__in_seach.setModel(filter_proxy_model_for_name)  # set model to ComboBox
+                self.comboBox_tool_name__in_seach.setModelColumn(2)  # choose column in model to display
+
+            if name_filter_state == 0:
+                self.comboBox_tool_name__in_seach.setEnabled(False)
+                self.lineEdit_name_in_search_filtrering.setEnabled(False)
+                self.lineEdit_name_in_search_filtrering.clear()
+                self.lineEdit_name_in_search_filtrering.hide()
+
+        except Exception as e:
+            print("---------------in search_by_name_filter: " + str(e))
+
+    def date_calibration_is_need(self):
+        try:
+            print("start of date_calibration_is_need\n------------------------------------------------ ")
+            date_calibration_state = self.checkBox_calibration_neccessery.checkState()
+            if date_calibration_state == 2:
+                self.next_calibration_date.setEnabled(True)
+            if date_calibration_state == 0:
+                self.next_calibration_date.setEnabled(False)
+        except Exception as e:
+            print("---------------in date_calibration_is_need: " + str(e))
+
+    def row_was_clicked(self):
+        try:
+            print("start of row_was_clicked\n------------------------------------------------ ")
+            row_selected = self.tableWidget_qt.currentRow()
+            print(row_selected)
+            numcols = self.tableWidget_qt.columnCount()
+            print(numcols)
+            print("---------------------------------------------------")
+            row_value = []
+            print("printuje w for")
+            for value in range(0, numcols):
+                ou = self.tableWidget_qt.item(row_selected, value)
+                row_value.append(ou.text())
+            print(row_value)
+            print("---------------------------------------------------")
+            self.lineEdit_name_in_search.setText(row_value[2])
+            self.lineEdit_tool_code_in_search.setText(row_value[5])
+            self.lineEdit_destination_in_search.setText(row_value[0])
+            self.lineEdit_mark_in_search.setText(row_value[1])
+            self.lineEdit_power_in_search.setText(row_value[3])
+            self.lineEdit_producer_in_search.setText(row_value[4])
+            self.lineEdit_next_calibration_date_in_search.setText(row_value[6])
+            self.lineEdit_others_in_search.setText(row_value[7])
+            self.push_button_QR_generate.setEnabled(True)
+            self.tab_edit_tool.setEnabled(True)
+
+        except Exception as e:
+            print("---------------in row_was_clicked: " + str(e))
+
+    def row_was_clicked_in_tableview(self):
+        try:
+            print("start of row_was_clicked_in_tableview\n------------------------------------------------ ")
+            # print(self.tableView_data_from_basefile.selectionModel.index(1,0).data())
+            select = self.tableView_data_from_basefile.model()           # getting model from TableView to count columns
+            row_index = self.tableView_data_from_basefile.currentIndex()  # getting indexes of clicked row
+            number_of_column = select.columnCount()                       # getting columns number
+            selected_row_number = row_index.row()
+            # print(row_index.data())
+            # print(selected_row_number)
+            # print(number_of_column)
+            # print("---------------------------------------------------")
+            row_value = []
+            # print("control print before loop for")
+            for value in range(0, number_of_column):
+
+                in_loop = select.index(selected_row_number,value).data()
+                row_value.append(in_loop)
+
+            # print(row_value)
+            # print("---------------------------------------------------")
+            self.lineEdit_name_in_search.setText(row_value[2])
+            self.lineEdit_tool_code_in_search.setText(row_value[5])
+            self.lineEdit_destination_in_search.setText(row_value[0])
+            self.lineEdit_mark_in_search.setText(row_value[1])
+            self.lineEdit_power_in_search.setText(row_value[3])
+            self.lineEdit_producer_in_search.setText(row_value[4])
+            self.lineEdit_next_calibration_date_in_search.setText(row_value[6])
+            self.lineEdit_others_in_search.setText(row_value[7])
+            self.push_button_QR_generate.setEnabled(True)
+
+        except Exception as e:
+            print("---------------in row_was_clicked_in_tableview: " + str(e))
+    def tab_index_chosen(self):
+        try:
+            print("start of tab_index_chosen\n------------------------------------------------ ")
+            choosen_tab_index = self.tab_creata_tool.currentIndex()
+            print(choosen_tab_index)
+            if choosen_tab_index == 0 :
+                self.hideded_elements()
+                #self.tableWidget_qt.hide()
+
+                self.push_button_aproved.show()
+                self.pushButton_open_exale_in_tabwidget.hide()
+                self.pushButton_save_editing_to_base.hide()
+                self.push_button_QR_generate.setEnabled(False)
+
+            if choosen_tab_index == 1 :
+                self.hideded_elements()
+                self.tableView_data_from_basefile.show()
+
+                self.push_button_aproved.hide()
+                self.pushButton_open_exale_in_tabwidget.show()
+                self.pushButton_save_editing_to_base.hide()
+                self.push_button_QR_generate.setEnabled(False)
+
+            if choosen_tab_index == 2:
+                self.hideded_elements()
+                self.tableWidget_qt.show()
+                self.push_button_aproved.hide()
+                self.pushButton_open_exale_in_tabwidget.hide()
+                self.pushButton_save_editing_to_base.show()
+
+
+
+                self.push_button_QR_generate.setEnabled(False)
+
+        except Exception as e:
+            print("---------------in start: " + str(e))
+
+    def open_and_show_exale(self):
+        try:
+
+            #self.tableWidget_qt.show()
+            print("start of open_and_show_exale\n------------------------------------------------ ")
+
+            global base_file_path_global
+            #print(base_file_path_global)
+            global global_list_of_savad_mark
+
+            wb = load_workbook(filename=base_file_path_global)                       # load file to edition
+            exale_tools_edited_sheet_name = wb.sheetnames                            # get name of sheets in xlsx file
+            sheet = wb.active
+#            print(sheet)
+#            print(sheet["A15"].value)
+#            print(sheet.cell(row=10, column=6).value)
+            wartosc = []
+            for value in sheet.iter_rows(min_row=1, max_row=5, min_col=1, max_col=8, values_only=True):
+                wartosc.append(value)
+#                print(value)
+            # ########## for an earlier version of Excel, you may need to use the file extension of 'xls' ############
+            data = pandas.read_excel(base_file_path_global, "Rejestr")
+            # print("------------------------")
+            # print("po pandasie liczy")
+            # print(range(len(data)))
+            row_conter_table_view = len(data)
+            # print("------------------------")
+            # print(row_conter_table_view)
+            # print("------------------------")
+            list = []
+            for x in sheet.iter_cols():
+                list.append(x)
+            #print(len(list))
+            columns_conter_table_view = len(list)
+            # tableWidget.setModel()
+            self.tableWidget_qt.setRowCount(len(data))
+            self.tableWidget_qt.setColumnCount(len(list))
+
+            rowPosition = self.tableWidget_qt.rowCount()
+            self.tableWidget_qt.insertRow(rowPosition)
+
+            numcols = self.tableWidget_qt.columnCount()
+            numrows = self.tableWidget_qt.rowCount()
+
+            self.tableWidget_qt.setRowCount(numrows)
+            self.tableWidget_qt.setColumnCount(numcols)
+
+            cells_value = []
+            for value in sheet.iter_rows(min_row=1, max_row=numrows, min_col=1, max_col=len(list), values_only=True):
+                cells_value.append(value)
+
+            # list contain only mark column in data file. It is uset to prevent to create duplicate tools.
+            # The same mark of tool is not allowed
+            mark_column_value = []
+            for value in sheet.iter_cols(min_row=1, max_row=numrows, min_col=2, max_col=2, values_only=True):
+                mark_column_value.append(value)
+            # print(mark_column_value)
+            for x in range(0,numrows):
+                global_list_of_savad_mark.append(mark_column_value[0][x])
+            #print(global_list_of_savad_mark)
+
+            item_counter = 0
+            # print(cells_value)
+            # print(" control print")
+            while item_counter < numrows:
+                # print("Start while in open_and_show_exale")
+
+                for x in range(0, numcols):
+                    # print("Control print")
+
+                    item_destination = str(cells_value[item_counter][x])
+
+                    self.tableWidget_qt.setItem(item_counter, x, QTableWidgetItem(item_destination))
+                # print(cells_value[item_counter])
+                item_counter += 1
+            # print(" control print")
+            # print(item_counter)
+            header_list = ["Lokalizacja", "Oznaczenie", "Nazwa narzędzie", "Moment", "Producent", "Nr fabryczny",
+                           "Data następnej kalibracji", "Inne"]
+            self.tableWidget_qt.setHorizontalHeaderLabels(header_list)         # set column header
+            self.tableWidget_qt.setSortingEnabled(True)                        # set column sorting enable
+            self.tableWidget_qt.setSelectionBehavior(QTableView.SelectRows)    # select all row only
+            self.tableWidget_qt.resizeColumnsToContents()                      # adjust cell size to content
+            self.tableWidget_qt.setEditTriggers(QTableView.NoEditTriggers)     # disable cell editing
+            self.tableWidget_qt.setSelectionMode(QTableView.SingleSelection)   # disable multiple row selection ability
+
+            # print("-------------------------------------------------------------")
+
+            # standard item model
+            model = QtGui.QStandardItemModel(5, 3)                  # create model for table (value 5, 3 not matter)
+            # print(model)
+            model.setHorizontalHeaderLabels(header_list)            # set model header
+            item_counter = 0
+            while item_counter < numrows:                           # loop to fill model with data from excel file
+                # print("Start while in open_and_show_exale")
+
+                for x in range(0, numcols):
+                    # print("Control print in for")
+
+                    item_destination = QtGui.QStandardItem(str(cells_value[item_counter][x]))
+                    model.setItem(item_counter, x, item_destination)
+                    #model.setItem(item_counter, x, QTableWidgetItem(item_destination))
+                # print(cells_value[item_counter])
+                item_counter += 1
+
+
+            # print("mieszanie w modelu proxy")
+
+            # ##### Enable filtering by name edit
+            filter_proxy_model_for_comboboxes_and_tableview = QtCore.QSortFilterProxyModel()      #  create model for sorting table
+            filter_proxy_model_for_comboboxes_and_tableview.setSourceModel(model)                 # choose data for model from origin model
+            #filter_proxy_model_for_name.setFilterKeyColumn(2)                 # set filtering by third column
+            # ### if text change in lineEdit_name_in_search_filtrering sorting model will update as well
+            #self.lineEdit_name_in_search_filtrering.textChanged.connect(filter_proxy_model_for_name.setFilterRegExp)
+            self.tableView_data_from_basefile_in_new_tools.setModel(filter_proxy_model_for_comboboxes_and_tableview)
+            self.tableView_data_from_basefile.setSortingEnabled(True)  # set column sorting enable
+            # ################################################## table to create new mark  section     ################
+            self.tableView_data_from_basefile.setModel(filter_proxy_model_for_comboboxes_and_tableview)
+            self.tableView_data_from_basefile_in_new_tools.setSelectionBehavior(
+                QTableView.SelectRows)  # select all row only
+            self.tableView_data_from_basefile_in_new_tools.resizeColumnsToContents()  # adjust cell size to content
+            self.tableView_data_from_basefile_in_new_tools.setEditTriggers(
+                QTableView.NoEditTriggers)  # disable cell editing
+            self.tableView_data_from_basefile_in_new_tools.setSelectionMode(
+                QTableView.SingleSelection)  # disable multiple row selection ability
+
+
+            # ##### Enable filtering by tool code edit
+            filter_proxy_model_for_new_mark = QtCore.QSortFilterProxyModel()  # create model for sorting table
+            filter_proxy_model_for_new_mark.setSourceModel(model)  # choose data for model from origin model
+            filter_proxy_model_for_new_mark.setFilterKeyColumn(1)  # set filtering by third column
+            self.lineEdit_mark.textChanged.connect(
+                filter_proxy_model_for_new_mark.setFilterRegExp)
+            self.tableView_data_from_basefile_in_new_tools.setModel(filter_proxy_model_for_new_mark)
+            # ################################################## filling ComboBoxes section     ##################
+            self.comboBox_tool_name__in_seach.setModel(filter_proxy_model_for_comboboxes_and_tableview)      # set model to ComboBox
+            self.comboBox_tool_name__in_seach.setModelColumn(2)                     # choose column in model to display
+            self.comboBox_tool_code__in_seach.setModel(filter_proxy_model_for_comboboxes_and_tableview)      # set model to ComboBox
+            self.comboBox_tool_code__in_seach.setModelColumn(5)                     # choose column in model to display
+            self.comboBox_destination__in_seach.setModel(filter_proxy_model_for_comboboxes_and_tableview)    # set model to ComboBox
+            self.comboBox_destination__in_seach.setModelColumn(0)                    # choose column in model to display
+            self.comboBox_mark_in_seach.setModel(filter_proxy_model_for_comboboxes_and_tableview)            # set model to ComboBox
+            self.comboBox_mark_in_seach.setModelColumn(1)                            # choose column in model to display
+            # ########################################################################################################
+            # ################################################## TableView additional settings     ##################
+            self.tableView_data_from_basefile.setSelectionBehavior(QTableView.SelectRows)    # select all row only
+            self.tableView_data_from_basefile.resizeColumnsToContents()                      # adjust cell size to content
+            self.tableView_data_from_basefile.setEditTriggers(QTableView.NoEditTriggers)     # disable cell editing
+            self.tableView_data_from_basefile.setSelectionMode(QTableView.SingleSelection)   # disable multiple row selection ability
+            # ########################################################################################################
+            # ################################################## Activate checkboxes     ##################
+            self.checkBox_in_search_tool_for_name_search.setEnabled(True)
+            self.checkBox_in_search_tool_for_tool_code.setEnabled(True)
+            self.checkBox_in_search_tool_for_destination.setEnabled(True)
+            self.checkBox_in_search_tool_for_mark.setEnabled(True)
+
+            book = load_workbook(base_file_path_global)
+            lista = []
+            # print(book)
+            sheet = book.active
+            counter = 0
+            for row in sheet.iter_rows(min_row=1, min_col=1, max_row=30, max_col=8):
+                for cell in row:
+                    #print(cell.value, end=" ")
+                    #print(counter)
+                    lista.append(cell.value)
+                    counter += 1
+
+            # ################################################## to do skopiowania gdzie indziej
+            print("printuje tylko nazwy narzedzi:")
+            tool_name_list=[]
+            for x in range(1, numrows):
+                # print(sheet.cell(row=x, column=3).value)
+                tool_name_list.append(sheet.cell(row=x, column=3).value)
+            tool_name_list = dict.fromkeys(tool_name_list)                       # removing duplicate values from list
+            # print(tool_name_list)
+            # print(len(tool_name_list))
+            # self.comboBox_tool_name__in_seach.addItems(tool_name_list)
+
+            print("End of open_and_show_exale\n------------------------------------------------ ")
+        except Exception as e:
+            print("---------------in open_and_show_exale: " + str(e))
+
+    def print_QR_code_only(self):
+        try:
+            print("start of print_QR_code_only ")
+            hDC = win32ui.CreateDC()
+            hDC.CreatePrinterDC(printer_name)
+            printable_area = hDC.GetDeviceCaps(HORZRES), hDC.GetDeviceCaps(VERTRES)
+            printer_size = hDC.GetDeviceCaps(PHYSICALWIDTH), hDC.GetDeviceCaps(PHYSICALHEIGHT)
+            printer_margins = hDC.GetDeviceCaps(PHYSICALOFFSETX), hDC.GetDeviceCaps(PHYSICALOFFSETY)
+
+            #
+            # Open the image, rotate it if it's wider than
+            #  it is high, and work out how much to multiply
+            #  each pixel by to get it as big as possible on
+            #  the page without distorting.
+            #
+
+            bmp = Image.open(file_name)
+            if bmp.size[0] > bmp.size[1]:
+                bmp = bmp.rotate(90)
+
+            ratios = [1.0 * printable_area[0] / bmp.size[0], 1.0 * printable_area[1] / bmp.size[1]]
+            scale = min(ratios)
+
+            #
+            # Start the print job, and draw the bitmap to
+            #  the printer device at the scaled size.
+            #
+            hDC.StartDoc(file_name)
+            hDC.StartPage()
+
+            dib = ImageWin.Dib(bmp)
+            scaled_width, scaled_height = [int(scale * i) for i in bmp.size]
+            x1 = int((printer_size[0] - scaled_width) / 20)
+            y1 = int((printer_size[1] - scaled_height) / 20)
+            x2 = x1 + scaled_width
+            y2 = y1 + scaled_height
+            dib.draw(hDC.GetHandleOutput(), (x1, y1, x2, y2))
+
+            hDC.EndPage()
+            hDC.EndDoc()
+            hDC.DeleteDC()
+
+        except Exception as e:
+            print("---------------in print_QR_code_only: " + str(e))
+
+    def network_ok_or_offline_accepted(self):
+        try:
+            # print("start of networ_ok_or_offline_accepted ")
+            self.push_button_QR_generate.setEnabled(False)
+            self.push_button_aproved.setEnabled(False)
+            self.configuration_file_read()
+            self.pushButton_save_path_in_file.setEnabled(False)
+            self.hideded_elements()
+            # print("End of networ_ok_or_offline_accepted")
+        except Exception as e:
+            print("---------------in networ_ok_or_offline_accepted: " + str(e))
+
+    def hideded_elements(self):
+        try:
+            # print("start of hideded_elements")
+            self.tabWidget_qr_code.hide()
+            self.groupBox_help_destination.hide()
+            self.label_help_destination.hide()
+            self.groupBox_help_mark.hide()
+            self.label_help_mark.hide()
+            self.textBrowser_exale_file.hide()
+            self.pushButton_print_QR_code_only.hide()
+            self.pushButton_save_editing_to_base.hide()
+
+            self.lineEdit_name_in_search_filtrering.hide()
+            self.lineEdit_tool_code_in_search_filtrering.hide()
+            self.lineEdit_destination_in_search_filtrering.hide()
+            self.lineEdit_mark_in_search_filtrering.hide()
+
+            self.tableWidget_qt.hide()
+            self.tableView_data_from_basefile_in_new_tools.hide()
+            self.tableView_data_from_basefile.hide()
+            self.pushButton_open_exale_in_tabwidget.hide()
+            self.push_button_help_info_destination_show.show()
+            self.push_button_help_info_mark_show.show()
+        except Exception as e:
+            print("---------------in hideded_elements: " + str(e))
+
+    def save_path(self):
+        try:
+            # print("start of save_path ")
+            os.chdir(files_path)  # set configuration file patch for os module
+            config_ = open('configuration_saved.txt', "r")
+            # print(config_)
+            readed_files = config_.read()
+            # print(readed_files.splitlines())
+            readed_values = readed_files.splitlines()
+            config_.close()
+            # print(readed_values)
+            readed_values[1] = self.label_choose_base_file_description.text()
+            saved_values = '\n'.join(map(str, readed_values))
+            config_ = open('configuration_saved.txt', "wt")
+            config_.write(saved_values)
+            config_.close()
+            os.chdir(dir_path)  # set python file patch for os module
+        except Exception as e:
+            print("---------------in save_path: " + str(e))
+
+    def configuration_file_read(self):
+        try:
+            global base_file_path_global
+            # print("start of configuration_file_read ")
+            os.chdir(files_path)                                # set configuration file patch for os module
+            # print(files_path)
+            config_ = open('configuration_saved.txt', "r")      # open configuration file
+            readed_files = config_.read()                       # start of reading file
+            # print(readed_files.splitlines())
+            z = readed_files.splitlines()                       # make file line as list member
+            # print(z)
+            if z[1] != "":                                      # path is saved in files always in 2nd line
+                path_saved = z[1]
+                base_file_path_global = path_saved
+                # print("Path is save in file!")
+                # print(path_saved)
+                # checking if file path is in local drive or if it is in network drive by finding "E:\" in saved string
+                path_drive_control = base_file_path_global.rfind(engineering_drive)
+                # print(path_drive_control)
+
+                if path_drive_control != -1:
+                    # print("File is on network drive ")
+                    self.label_choose_base_file_description.setText("")
+
+                if path_drive_control == -1:
+                    # print("File is local")
+                    check_file = os.path.isfile(path_saved)             # checking if saved file still exist
+                    # print(check_file)
+                    if check_file is False:
+                        # print("Saved file is not available anymore")
+                        self.label_choose_base_file_description.setText("Zapisany plik został usuniety")
+                    if check_file is True:
+                        # print("Saved file is available")
+                        self.label_choose_base_file_description.setText(path_saved)
+                        self.label_choose_base_file_description.setStyleSheet("QLineEdit{border: 1px solid "
+                                                                              "black;border-radius: 2px;"
+                                                                              "font: normal normal bold 80% arial;"
+                                                                              "color: black; text-decoration: none;}")
+                        self.push_button_aproved.setEnabled(True)
+                        self.pushButton_save_path_in_file.setEnabled(True)
+            if z[1] == "":
+                print("No file path saved in configuration")
+
+            config_.close()
+            os.chdir(dir_path)                                 # set python file patch for os module
+            # print("End of configuration_file_read ")
+
+        except Exception as e:
+            print("in configuration_file_read:" + str(e))
+# ################################     Bottom buttons function   ################################
+
+    def approve_clicked(self):
+        try:
+            print("start of approve_clicked\n------------------------------------------------ ")
+            date_calibration_state = self.checkBox_calibration_neccessery.checkState()
+            # print(date_calibration_state)
+            global global_list_of_savad_mark
+            # print(global_list_of_savad_mark)
+
+            data_input_control = 1      # variable to control if all nessesery data are set in edit lines
+            # print(data_input_control)
+
+            new_item_in_exale = [self.lineEdit_destination.text(), self.lineEdit_mark.text(),
+                                  self.lineEdit_name.text(),self.lineEdit_power.text(),
+                                  self.lineEdit_producer.text(),self.lineEdit_tool_code.text(),
+                                  self.next_calibration_date.text(),self.lineEdit_others.text()]
+            if new_item_in_exale[2] == "":
+                self.lineEdit_name.setStyleSheet("QLineEdit{border: 3px solid red;border-radius: 2px;"
+                                                 "font: normal normal bold 80% arial;"
+                                                 "color: black; text-decoration: none;}")
+                data_input_control = 0
+            if new_item_in_exale[2] != "":
+                self.lineEdit_name.setStyleSheet("QLineEdit{border: 1px solid black;border-radius: 2px;"
+                                                 "font: normal normal bold 80% arial;"
+                                                 "color: black; text-decoration: none;}")
+            if new_item_in_exale[0] == "":
+                self.lineEdit_destination.setStyleSheet("QLineEdit{border: 3px solid red;border-radius: 2px;"
+                                                        "font: normal normal bold 80% arial;"
+                                                        "color: black; text-decoration: none;}")
+                data_input_control = 0
+            if new_item_in_exale[0] != "":
+                self.lineEdit_destination.setStyleSheet("QLineEdit{border: 1px solid black;border-radius: 2px;"
+                                                        "font: normal normal bold 80% arial;"
+                                                        "color: black; text-decoration: none;}")
+            if new_item_in_exale[1] == "":
+                self.lineEdit_mark.setStyleSheet("QLineEdit{border: 3px solid red;border-radius: 2px;"
+                                                 "font: normal normal bold 80% arial;"
+                                                 "color: black; text-decoration: none;}")
+                data_input_control = 0
+            if new_item_in_exale[1] != "":
+                self.lineEdit_mark.setStyleSheet("QLineEdit{border: 1px solid black;border-radius: 2px;"
+                                                 "font: normal normal bold 80% arial;"
+                                                 "color: black; text-decoration: none;}")
+            if data_input_control == 0:
+                self.push_button_QR_generate.setEnabled(False)
+                print("We got zero")
+            if data_input_control == 1:
+                print("wszystko wprowadzone")
+                mark_value = self.lineEdit_mark.text()
+                print("wartosc w oznaczeniu ")
+                print(mark_value)
+
+                self.push_button_QR_generate.setEnabled(True)
+                # print(new_item_in_exale)
+                # print(data_input_control)
+                try:
+                    control_mark_in_base = global_list_of_savad_mark.index(mark_value)
+                    print(str(control_mark_in_base) + "tutaj znalazlem ")
+                    mark_control_logic = 1
+                except Exception as mark_in_base:
+                    print("Mark not appear in base:" + str(mark_in_base))
+                    mark_control_logic = 0
+                print("po szukaniu wartosc logiki")
+                print(mark_control_logic)
+
+                if mark_control_logic == 0:                     # control if mark is in base 0-is not 1- is in base
+                    print("Im in logic  0 ")
+                    self.tableView_data_from_basefile_in_new_tools.hide()
+                    if date_calibration_state == 2:
+                        data_to_save = [self.lineEdit_destination.text(), self.lineEdit_mark.text(),
+                                  self.lineEdit_name.text(),self.lineEdit_power.text(),
+                                  self.lineEdit_producer.text(),self.lineEdit_tool_code.text(),
+                                  self.next_calibration_date.text(), self.lineEdit_others.text()]
+                        self.exale_editing2(data_to_save)
+                    if date_calibration_state == 0:
+                        data_to_save = [self.lineEdit_destination.text(), self.lineEdit_mark.text(),
+                                  self.lineEdit_name.text(),self.lineEdit_power.text(),
+                                  self.lineEdit_producer.text(), self.lineEdit_tool_code.text(),
+                                  "No need", self.lineEdit_others.text()]
+                        self.exale_editing2(data_to_save)
+                if mark_control_logic == 1:
+                    print("i'm in logic  1 ")
+                    self.lineEdit_mark.setStyleSheet("QLineEdit{border: 3px solid red;border-radius: 2px;"
+                                                        "font: normal normal bold 80% arial;"
+                                                        "color: black; text-decoration: none;}")
+
+        # CATCH
+        except Exception as e:
+            print("in approve_clicked():" + str(e))
+
+    def generate_clicked(self):
+        try:
+            global base_file_path_global
+            self.label_welkome_picture.hide()
+            self.tableWidget_qt.hide()
+            self.tabWidget_qr_code.show()
+            self.tableView_data_from_basefile.hide()
+            print("wybrany index")
+            choosen_tab_index = self.tab_creata_tool.currentIndex()
+            print(choosen_tab_index)
+            print("Start of generate_clicked")
+            if choosen_tab_index == 0:
+                Qr_code_source = self.lineEdit_mark.text()
+            if choosen_tab_index == 1:
+                Qr_code_source = self.lineEdit_mark_in_search.text()
+            # print(Qr_code_source)
+            img = qrcode.make(Qr_code_source)
+            img.save('_files\qrcode_test.png')
+            # print("zapisalem nowy plik")
+            pixmap = QtGui.QPixmap()
+            pixmap.load('_files\qrcode_test.png')
+            pixmap = pixmap.scaled(400, 400)
+            self.label_testowe_do_qr_code.setPixmap(pixmap)
+            print("W hexie to ")
+            print(Qr_code_source)
+            # convert string to hex
+            def toHex(s):
+                lst = []
+                for ch in s:
+                    hv = hex(ord(ch)).replace('0x', '')
+                    if len(hv) == 1:
+                        hv = '0' + hv
+                    lst.append(hv)
+
+                return (lst)
+            v = toHex(Qr_code_source)
+            print(v)
+            QR_code_to_save = str(v).replace('\'', "")\
+                .replace(',', "").replace(' ', "").replace("[", "").replace("]", "")
+            print(QR_code_to_save)
+            self.pushButton_print_QR_code_only.show()
+            self.push_button_QR_generate.setEnabled(False)
+
+        except Exception as e:
+            print("---------------In generate_clicked: " + str(e))
+
+    def exale_editing2(self, code_to_save):
+        try:
+            global base_file_path_global
+            print(base_file_path_global)
+            print("Start of exale_editing2")
+            wb = load_workbook(filename=base_file_path_global)              # load file to edition
+            exale_tools_edited_sheet_name = wb.sheetnames                   # get name of sheets in xlsx file
+            # find index of sheets we want to edit
+            exale_tools_edited_sheet_number = exale_tools_edited_sheet_name.index('Rejestr')
+            # print(exale_tools_edited_sheet_number)
+            # print(exale_tools_edited_sheet_name)
+            # set sheet for edition as active sheet
+            exale_tools_edited_sheet = wb[exale_tools_edited_sheet_name[exale_tools_edited_sheet_number]]
+            # print(exale_tools_edited_sheet)
+            print("Start data edition")
+            print(exale_tools_edited_sheet.max_row)                         # find last row in sheet
+            last_row_number = "A" + str(exale_tools_edited_sheet.max_row)   # create last row address
+            print(last_row_number)
+            c = exale_tools_edited_sheet[last_row_number]                   # get value from cell
+            print(c.value)
+            print(code_to_save)
+            exale_tools_edited_sheet.append(code_to_save)
+
+            # Save the file
+            wb.save(base_file_path_global)
+
+        except Exception as e:
+            print("---------------In exale_editing2: " + str(e))
+
+# ##########################################    Network connection control ######################################
+
+    def network_control(self):
+        try:
+            # print("Start of network_control")
+            network_state = os.path.exists(engineering_drive)
+            # print(network_state)
+            l = list(os.listdir(engineering_drive))
+            # print(l)
+            if network_state == 0:
+                return 0
+            if network_state != 0:
+                return 1
+            # print("End of network_control")
+        # CATCH
+        except Exception as e:
+            print("---------------In network_control: " + str(e))
+            return 0
+            self.network_Qmessage()
+
+# ################################     Choose dcf file button for manual programming   ################################
+    def choose_file(self):
+        try:
+            # print("Start of choose_file")
+            global base_file_path_global
+            # net_con = self.network_control()
+            # if net_con == 0:
+            #    print("BŁĄD. BRAK SIECI !")
+            #    self.network_Qmessage()
+            # if net_con is None:
+            # print("Network ok")
+            choose_path = QtWidgets.QFileDialog.getOpenFileName(self, ("Wybór pliku"),
+                                                                "C:\\", ("xlsx (*.xlsx)"))
+            print(choose_path)
+            # chosen_file = self.patch_reduce(choose_path[0])
+            # print(chosen_file)
+            # file_name_finding_sign = chosen_file.rfind(".")
+            # print(file_name_finding_sign)
+            # dcf_chosen_file_name = str(chosen_file[0:file_name_finding_sign])
+            if choose_path[0] != "":
+                self.label_choose_base_file_description.setText(choose_path[0])
+                self.push_button_aproved.setEnabled(True)
+                self.label_choose_base_file_description.setStyleSheet("QLineEdit{border: 1px solid "
+                                                                      "black;border-radius: 2px;"
+                                                                      "font: normal normal bold 80% arial;"
+                                                                      "color: black; text-decoration: none;}")
+                self.pushButton_save_path_in_file.setEnabled(True)
+                base_file_path_global = choose_path[0]
+
+        # CATCH
+        except Exception as e:
+            print("in choose_file: " + str(e))
+
+    def set_enable(self):
+        try:
+            print("Start of set_enable")
+
+        # CATCH
+        except Exception as e:
+            print("---------------In set_enable: " + str(e))
+
+# ###################################################################################################################
+# #########################################   MESSAGE BOXES    ######################################################
+# ###################################################################################################################
+# ###################################################################################################################
+# #####################################     Network checking       ##################################################
+
+    def network_Qmessage(self):
+        try:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setText("Nie wykryto połączenia z siecią wewnętrzną")
+            msg.setInformativeText("Nie można uzyskać dostępu do dysku sieciowego. "
+                                   "Możliwa praca w trybie OFFLINE! \n"
+                                   "Program nie synchronizuje bazy po restarcie lub zamknięciu. "
+                                   "W celu zachowania ciągłości danych w bazie, pamiętaj o skopiowaniu ich z  "
+                                   "pliku lokalnego ręcznie po przywróceniu połączenia. \n "
+                                   "\n\n"
+                                   "    Czy chcesz kontynuować pracę w trybie OFFLINE?")
+            msg.setWindowTitle("Network error")
+            # msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)      # standard butons may be definine this way
+            msg.addButton('Tak', QtWidgets.QMessageBox.YesRole)
+            msg.addButton('Nie', QtWidgets.QMessageBox.NoRole)
+            msg.setDetailedText("Nie można uzyskać dostępu do dysku sieciowego Enggineers.\n"
+                                " W celu przywrócenia połaczenia, skontaktuj się z administratorem sieci.\n\n"
+                                "Tip:\n"
+                                "Spróbuj przywrócić połaczenie z dyskiem, wchodząc na niego z poziomu Windowsa.\n"
+                                "System odcina dyski sieciowe w przypadku braku sieci.\n"
+                                " Ponownie wejscie na nie może przywrócic połaczenie i umożliwić "
+                                "poprawną prace programu.")
+            msg.setStyleSheet("QPushButton"
+                              "{"
+                              "background-color:transparent; text-align: center; "
+                              "vertical-align: middle; padding: 5px 30px; border: 3px solid #3f677e;"
+                              "border-radius: 12px; background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299,y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245)); "
+                              "font: normal normal bold 80% arial;color: #ffffff;"
+                              "}"
+                              "QPushButton:hover"
+                              "{"
+                              "background-color:transparent; text-align: center;"
+                              "vertical-align: middle; padding: 5px 30px; border: 3px solid #65a5ca;"
+                              "border-radius: 12px;background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299, y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245));"
+                              "font: normal normal bold 80% arial; color: #ffffff;text-decoration: none;"
+                              "}"
+                              "QPushButton:pressed"
+                              "{"
+                              "background-color: qlineargradient(spread:pad, x1:0.503, y1:0.284091, x2:0.503299, "
+                              "y2:0.887, stop:0 rgba(14,38,53, 255), stop:1 rgba(76,128,156,245));"
+                              "}"
+                              "QLabel{color:black;}"
+                              "QMessageBox"
+                              "{"
+                              "background-color: rgb(136,176,221);"
+                              "}")
+            reply = msg.exec_()
+            # print(reply)                      # "Tak" click set reply value to 0, any other button have value +1
+            if reply == 0:
+                # print("YES")
+                QRcodeMainWIndow.setEnabled(self, True)
+                return "yes"
+            elif reply == 1:
+                # print("No")
+                QRcodeMainWIndow.setEnabled(self, False)
+                return "no"
+            # below code is example can be apply with standard buttons
+            # if reply == QMessageBox.Yes:
+            #     print("Yes")
+            #     return "yes"
+        # CATCH
+        except Exception as e:
+            print("---------------In network_Qmessage: " + str(e))
+
+# #####################################     Help name          ##################################################
+
+    def help_destination(self):
+        try:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText("Informacje dodatkowe :")
+            msg.setInformativeText("1S1.A - Stanowisko 1 montaż linia główna  GO!S \n\n"
+                                   "2S1.B - Stanowisko 2 montaż linia główna  Schwalbe \n\n"
+                                   "1P1.A - Podmontaż prawa strona -Podmontaż Wahacza GO!S")
+            msg.setWindowTitle("Okno pomocy")
+            msg.setStyleSheet("QPushButton"
+                              "{"
+                              "background-color:transparent; text-align: center; "
+                              "vertical-align: middle; padding: 5px 25px; border: 3px solid #3f677e;"
+                              "border-radius: 12px; background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299,y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245)); "
+                              "font: normal normal bold 80% arial;color: #ffffff;"
+                              "}"
+                              "QPushButton:hover"
+                              "{"
+                              "background-color:transparent; text-align: center;"
+                              "vertical-align: middle; padding: 5px 5px; border: 3px solid #65a5ca;"
+                              "border-radius: 12px;background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299, y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245));"
+                              "font: normal normal bold 80% arial; color: #ffffff;text-decoration: none;"
+                              "}"
+                              "QPushButton:pressed"
+                              "{"
+                              "background-color: qlineargradient(spread:pad, x1:0.503, y1:0.284091, x2:0.503299, "
+                              "y2:0.887, stop:0 rgba(14,38,53, 255), stop:1 rgba(76,128,156,245));"
+                              "}"
+                              "QLabel{color:black;}"
+                              "QMessageBox"
+                              "{"
+                              "background-color: rgb(136,176,221);"
+                              "}")
+            msg.exec()
+        # CATCH
+        except Exception as e:
+            print("---------------In help_destination: " + str(e))
+
+# #####################################     Help mark          ##################################################
+    def help_mark(self):
+        try:
+            path_image = os.path.join(dir_path, "images/button_vin_checker.png").replace("\\", "/")
+            print(path_image)
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText("Informacje dodatkowe:")
+            msg.setInformativeText("A - Linia GO!S \n"
+                                   "B - Schwalbe \n"
+                                   "C - Goose \n\n"
+                                   "D - dynamometryczne\n"
+                                   "N - nitownica\n"
+                                   "E - elektronarzędzie\n"
+                                   "R - ręczne")
+
+            pixmap = QtGui.QPixmap()
+            pixmap.load('images/description_screen.png')
+            pixmap = pixmap.scaled(700, 500)
+            msg.setIconPixmap(pixmap)
+            msg.setWindowTitle("Okno pomocy")
+            msg.setStyleSheet("QPushButton"
+                              "{"
+                              "background-color:transparent; text-align: center; "
+                              "vertical-align: middle; padding: 5px 25px; border: 3px solid #3f677e;"
+                              "border-radius: 12px; background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299,y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245)); "
+                              "font: normal normal bold 80% arial;color: #ffffff;"
+                              "}"
+                              "QPushButton:hover"
+                              "{"
+                              "background-color:transparent; text-align: center;"
+                              "vertical-align: middle; padding: 5px 5px; border: 3px solid #65a5ca;"
+                              "border-radius: 12px;background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299, y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245));"
+                              "font: normal normal bold 80% arial; color: #ffffff;text-decoration: none;"
+                              "}"
+                              "QPushButton:pressed"
+                              "{"
+                              "background-color: qlineargradient(spread:pad, x1:0.503, y1:0.284091, x2:0.503299, "
+                              "y2:0.887, stop:0 rgba(14,38,53, 255), stop:1 rgba(76,128,156,245));"
+                              "}"
+                              "QLabel{color:black;}"
+                              "QMessageBox"
+                              "{"
+                              "background-color: rgb(136,176,221);"
+                              "}")
+            msg.exec()
+        # CATCH
+        except Exception as e:
+            print("---------------In help_mark: " + str(e))
+
+    def offline_window(self):
+        try:
+            msgBox = QtWidgets.QMessageBox()
+            msgBox.setWindowTitle('About the Activity Browser')
+            # pixmap = self.window.icon.pixmap(QtCore.QSize(150, 150))
+            # msgBox.setIconPixmap(pixmap)
+            # msgBox.setWindowIcon(self.window.icon)
+            msgBox.setText("text")
+
+            msgBox.setStyleSheet("QPushButton"
+                              "{"
+                              "background-color:transparent; text-align: center; "
+                              "vertical-align: middle; padding: 5px 5px; border: 3px solid #3f677e;"
+                              "border-radius: 12px; background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299,y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245)); "
+                              "font: normal normal bold 80% arial;color: #ffffff;"
+                              "}"
+                              "QPushButton:hover"
+                              "{"
+                              "background-color:transparent; text-align: center;"
+                              "vertical-align: middle; padding: 5px 5px; border: 3px solid #65a5ca;"
+                              "border-radius: 12px;background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299, y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245));"
+                              "font: normal normal bold 80% arial; color: #ffffff;text-decoration: none;"
+                              "}"
+                              "QPushButton:pressed"
+                              "{"
+                              "background-color: qlineargradient(spread:pad, x1:0.503, y1:0.284091, x2:0.503299, "
+                              "y2:0.887, stop:0 rgba(14,38,53, 255), stop:1 rgba(76,128,156,245));"
+                              "}"
+                              "QLabel{color:black;}"
+                              "QMessageBox"
+                              "{"
+                              "background-color: rgb(136,176,221);"
+                              "}")
+            msgBox.exec_()
+        # CATCH
+        except Exception as e:
+            print("---------------In network_Qmessage: " + str(e))
+
+# #####################################     Help About          ##################################################
+    def o_programie_chossen(self):
+        try:
+            path_image = os.path.join(dir_path, "images/button_vin_checker.png").replace("\\", "/")
+            print(path_image)
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText("Informacje o QR code generator")
+            msg.setInformativeText("Rewizja 1.0 \n\n"
+                                   "Interfejs użytkownika został zaprojektowany z wykorzystaniem\n"
+                                   "oprogramowania Qt Designer w wersji 5.6.0. \n"
+                                   "Qt jest własnością firmy QT Company Ltd  \n"
+                                   "i rozwijany jest jako projekt \"open source\". \n"
+                                   "Więcej infomracji na stronie:\n"                           
+                                   "qt.io\n"
+                                   " \n"
+                                   "Created by:\n"
+                                   "M. Adamowicz")
+
+            pixmap = QtGui.QPixmap()
+            pixmap.load('images/Govecs_Logo_trans.png')
+            pixmap = pixmap.scaled(145, 42)
+            msg.setIconPixmap(pixmap)
+            msg.setWindowTitle("Okno pomocy")
+            msg.setStyleSheet("QPushButton"
+                              "{"
+                              "background-color:transparent; text-align: center; "
+                              "vertical-align: middle; padding: 5px 25px; border: 3px solid #3f677e;"
+                              "border-radius: 12px; background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299,y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245)); "
+                              "font: normal normal bold 80% arial;color: #ffffff;"
+                              "}"
+                              "QPushButton:hover"
+                              "{"
+                              "background-color:transparent; text-align: center;"
+                              "vertical-align: middle; padding: 5px 5px; border: 3px solid #65a5ca;"
+                              "border-radius: 12px;background-color:qlineargradient(spread:pad, x1:0.503, y1:0.284091,"
+                              "x2:0.503299, y2:0.887, stop:0 rgba(23,64,89, 255), stop:1 rgba(76,128,156,245));"
+                              "font: normal normal bold 80% arial; color: #ffffff;text-decoration: none;"
+                              "}"
+                              "QPushButton:pressed"
+                              "{"
+                              "background-color: qlineargradient(spread:pad, x1:0.503, y1:0.284091, x2:0.503299, "
+                              "y2:0.887, stop:0 rgba(14,38,53, 255), stop:1 rgba(76,128,156,245));"
+                              "}"
+                              "QLabel{color:black;}"
+                              "QMessageBox"
+                              "{"
+                              "background-color: rgb(136,176,221);"
+                              "}")
+            msg.exec()
+        # CATCH
+        except Exception as e:
+            print("---------------In help_mark: " + str(e))
+
+    def read_destination_help_file(self):
+        try:
+            # print("start of read_destination_help_file ")
+            path_image = os.path.join(dir_path, "_files/help_destination_content.txt").replace("\\", "/")
+            # Use codecs module to convert string to unicode. ti alo keep polish letter in file browser
+            help_config_file_temp = codecs.open(path_image, "r", "utf-8")
+            # Returns a Unicode string from the UTF-8 bytes in the file
+            help_destination_file_content = help_config_file_temp.read()
+            help_config_file_temp.close()
+            print(help_destination_file_content)
+            self.textBrowser_destination_help.setText(help_destination_file_content)
+        except Exception as e:
+            print("---------------in read_destination_help_file: " + str(e))
+
+    def read_mark_help_file(self):
+        try:
+            # print("start of read_mark_help_file ")
+            path_image = os.path.join(dir_path, "_files/help_mark_content.txt").replace("\\", "/")
+            # Use codecs module to convert string to unicode. ti alo keep polish letter in file browser
+            help_config_file_temp = codecs.open(path_image, "r", "utf-8")
+            # Returns a Unicode string from the UTF-8 bytes in the file
+            help_mark_file_content = help_config_file_temp.read()
+            help_config_file_temp.close()
+            print(help_mark_file_content)
+            self.textBrowser_mark_help.setText(help_mark_file_content)  # choose text browser to show file
+            # #####################################Label help mark pixmap ####################################
+            path_image = os.path.join(dir_path, "_files/help_mark_image_path.txt").replace("\\", "/")
+            # Use codecs module to convert string to unicode. ti alo keep polish letter in file browser
+            help_config_file_pixmap_path_temp = codecs.open(path_image, "r", "utf-8")
+            # Returns a Unicode string from the UTF-8 bytes in the file
+            help_mark_file_content = help_config_file_pixmap_path_temp.read()
+            help_config_file_pixmap_path_temp.close()
+            print(help_mark_file_content)
+            z = help_mark_file_content.splitlines()                         # make file line as list member
+            print(help_mark_file_content)
+            print("kontrolny")
+            controling_help_mark_file_content = len(z)
+            print(controling_help_mark_file_content)
+            if controling_help_mark_file_content <= 1:
+                self.edit_mark_help_picture()
+            else:
+                print(len(z))
+                help_config_file_pixmap_path_ = z[1]
+                print(help_config_file_pixmap_path_)
+                mark_pixmap = QtGui.QPixmap()
+                mark_pixmap.load(help_config_file_pixmap_path_)
+                pixmap = mark_pixmap.scaled(450, 350)
+                self.label_mark_pixmap.setPixmap(pixmap)
+
+        except Exception as e:
+            print("---------------in read_mark_help_file: " + str(e))
+
+    def edit_destination_help_file(self):
+        try:
+            # print("start of edit_destination_help_file ")
+            # QRcodeMainWIndow.setEnabled(self, False)
+            path_image = os.path.join(dir_path, "_files/help_destination_content.txt").replace("\\", "/")
+            w = os.system(path_image)
+            print(w)
+        except Exception as e:
+            print("---------------in edit_destination_help_file: " + str(e))
+
+    def edit_mark_help_file(self):
+        try:
+            # print("start of edit_mark_help_file ")
+            # QRcodeMainWIndow.setEnabled(self, False)
+            path_image = os.path.join(dir_path, "_files/help_mark_content.txt").replace("\\", "/")
+            content = os.system(path_image)
+            print(content)
+        except Exception as e:
+            print("---------------in edit_mark_help_file: " + str(e))
+
+    def edit_mark_help_picture(self):
+        try:
+            print("start of edit_mark_help_file ")
+            # ------------------------------  Choose file path ------------------------------------
+            config_path_image = os.path.join(dir_path, "_files/help_mark_image_path.txt").replace("\\", "/")
+            path_image = os.path.join(dir_path, "mark_help_images").replace("\\", "/")
+            # print(content)
+            choose_path = QtWidgets.QFileDialog.getOpenFileName(self, ("Wybór pliku z grafiką "),
+                                                                path_image, ("png (*.png)"))
+            print("Chosen file")
+            choose_path = choose_path[0]
+            if choose_path == "":
+                print("Nothing choose ")
+                choose_path = os.path.join(dir_path, "mark_help_images/no_file_choosen.png").replace("\\", "/")
+            print(choose_path)
+            config_ = codecs.open(config_path_image, "r", "utf-8")
+            # print(config_)
+            readed_files = config_.read()
+            # print(readed_files.splitlines())
+            readed_values = readed_files.splitlines()
+            config_.close()
+            print(readed_values)
+            # readed_values[1] = choose_path
+            # print(readed_values)
+            # saved_values = '\n'.join(map(str, readed_values))
+            saved_values = (readed_values[0] + '\n' + choose_path)
+            print("zapisywana dana")
+            print(saved_values)
+            config_ = open(config_path_image, "wt")
+            config_.write(saved_values)
+            config_.close()
+            self.read_mark_help_file()
+        except Exception as e:
+            print("---------------in edit_mark_help_picture: " + str(e))
+
+
+if __name__ == '__main__':
+
+    app = QApplication(sys.argv)
+    ex = QRcodeMainWIndow()
+    ex.show()
+    sys.exit(app.exec_())
